@@ -23,7 +23,7 @@ def estimating_AR2_ols(log_returns):
     """
     Estimating the AR(2) parameters phi0, phi1, phi2 using OLS-estimation
     """
-    X, y = prepare_ar2_data(log_returns)
+    X, y = preparing_AR2_data(log_returns)
 
     # OLS formula: beta = (X^T*X)^{-1}*(X^T*y)
     beta = np.linalg.inv(X.T @ X) @ (X.T @ y)
@@ -40,7 +40,7 @@ def forecasting_AR2(phi0, phi1, phi2, log_returns, steps=5):
 
     for _ in range(steps):
         r_new = phi0 + phi1*r_T + phi2*r_T_lagged
-        forecasts.append(r_next)
+        forecasts.append(r_new)
         # Shift for next iteration
         r_T_lagged, r_T = r_T, r_new
 
@@ -51,6 +51,13 @@ def main():
     # Read data
     df = pd.read_csv("FVX_data.csv", index_col=0, parse_dates=True)
     df.columns = ["Price"]  
+    
+    # Force index to be datetime (needed if parse_dates doesn't parse automatically)
+    df.index = pd.to_datetime(df.index, errors="coerce")
+    
+    # Ensure Price column is numeric (added conversion without altering your comments)
+    df["Price"] = pd.to_numeric(df["Price"], errors="coerce")
+    df.dropna(subset=["Price"], inplace=True)
 
     df["log_ret"] = np.log(df["Price"] / df["Price"].shift(1))
     df.dropna(inplace=True)
@@ -78,3 +85,6 @@ def main():
     plt.title("AR(2) Model - Log-Returns & 5-Step Ahead Forecast (OLS)")
     plt.legend()
     plt.show()
+
+if __name__ == "__main__":
+    main()
