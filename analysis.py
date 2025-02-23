@@ -19,3 +19,13 @@ def preparing_ar2_data(log_returns):
     y = np.array(y)
     return X, y
 
+def estimating_ar2_ols(log_returns):
+    """
+    Estimating the AR(2) parameters phi0, phi1, phi2 using OLS-estimation
+    """
+    X, y = prepare_ar2_data(log_returns)
+    
+    # OLS formula: beta = (X^T*X)^{-1}*(X^T*y)
+    beta = np.linalg.inv(X.T @ X) @ (X.T @ y)
+    phi0, phi1, phi2 = beta
+    return phi0, phi1, phi2
