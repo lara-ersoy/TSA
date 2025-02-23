@@ -45,3 +45,24 @@ def forecasting_AR2(phi0, phi1, phi2, log_returns, steps=5):
         r_T_lagged, r_T = r_T, r_new
 
     return np.array(forecasts)
+
+def main():
+
+    # Read data
+    df = pd.read_csv("FVX_data.csv", index_col=0, parse_dates=True)
+    df.columns = ["Price"]  
+
+    df["log_ret"] = np.log(df["Price"] / df["Price"].shift(1))
+    df.dropna(inplace=True)
+
+    # Estimating AR(2) using OLS estimation
+    phi0, phi1, phi2 = estimate_AR2_ols(df["log_ret"])
+    print(f"AR(2) OLS Estimates:")
+    print(f"phi0 = {phi0:.5f}, phi1 = {phi1:.5f}, phi2 = {phi2:.5f}")
+
+    # Forecast next 5 steps
+    steps_ahead = 5
+    forecast_vals = forecast_ar2(phi0, phi1, phi2, df["log_ret"], steps=steps_ahead)
+    print(f"\nForecasted log-returns for the next {steps_ahead} days:")
+    for i, val in enumerate(forecast_vals, start=1):
+        print(f"Day {i}: {val:.5f}")
