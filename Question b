@@ -25,3 +25,27 @@ def compute_acf(series, max_lag=30):
             acf_vals.append(cov / var_r)
     
     return acf_vals
+
+def main():
+    """
+    Calculates daily log-returns the plot rates and the log returns.
+    Makes autocorrelation plot of the log-returns.
+    """
+
+    # Read data
+    df = pd.read_csv("FVX_data.csv", index_col=0, parse_dates=True)
+    df.columns = ["Price"]
+    df.index = pd.to_datetime(df.index, errors="coerce")
+
+    # Check if the price is numeric
+    df["Price"] = pd.to_numeric(df["Price"], errors="coerce")
+    df.dropna(subset=["Price"], inplace=True)
+
+    # Computing the daily-returns
+    df["log_ret"] = np.log(df["Price"] / df["Price"].shift(1))
+    df.dropna(inplace=True)
+
+    # Plotting the log-return rates and the rates
+    fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(10, 6), sharex=True)
+
+    
