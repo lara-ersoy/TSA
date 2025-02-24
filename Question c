@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.optimize import minimize  # Allowed for numerical optimization
 
 def preparing_AR2_data(log_returns):
     """
@@ -18,6 +19,17 @@ def preparing_AR2_data(log_returns):
     X = np.array(X)
     y = np.array(y)
     return X, y
+
+def estimating_AR2_ols(log_returns):
+    """
+    Estimating the AR(2) parameters phi0, phi1, phi2 by OLS-estimation
+    """
+    X, y = preparing_AR2_data(log_returns)
+
+    # OLS formula: beta = (X^T*X)^{-1}*(X^T*y)
+    beta = np.linalg.inv(X.T @ X) @ (X.T @ y)
+    phi0, phi1, phi2 = beta
+    return phi0, phi1, phi2
 
 def negative_log_likelihood_AR2(params, r):
     """
@@ -45,17 +57,30 @@ def negative_log_likelihood_AR2(params, r):
     nll = 0.5 * n * np.log(2 * np.pi * sigma2) + 0.5 * (RSS / sigma2)
     return nll
 
-
-def estimating_AR2_ols(log_returns):
+def estimating_AR2_mle(log_returns):
     """
-    Estimating the AR(2) parameters phi0, phi1, phi2 using OLS-estimation
+    Estimating the AR(2) parameters phi0, phi1, phi2 using MLE-estimation
     """
-    X, y = preparing_AR2_data(log_returns)
+    r = log_returns.values
 
-    # OLS formula: beta = (X^T*X)^{-1}*(X^T*y)
-    beta = np.linalg.inv(X.T @ X) @ (X.T @ y)
-    phi0, phi1, phi2 = beta
-    return phi0, phi1, phi2
+    # Initial guesses for phi0, phi1, phi2, and sigma2
+    phi0_guess = 0.0
+    phi1_guess = 0.0
+    phi2_guess = 0.0
+    sigma2_guess = np.var(r)  # naive guess
+    init_params = [phi0_guess, phi1_guess, phi2_guess, sigma2_guess]
+
+    # Using optimization to minimize the negative log-likelihood
+    result = minimize(
+        negative_log_likelihood_AR2,
+        init_params,
+        args=(r,),
+        method='BFGS',
+        options={'disp': False}
+    )
+
+    phi0_mle, phi1_mle, phi2_mle, sigma2_mle = result.x
+    return phi0_mle, phi1_mle, phi2_mle, sigma2_mle
 
 def forecasting_AR2(phi0, phi1, phi2, log_returns, steps=5):
     """
@@ -74,42 +99,63 @@ def forecasting_AR2(phi0, phi1, phi2, log_returns, steps=5):
     return np.array(forecasts)
 
 def main():
-
     # Read data
     df = pd.read_csv("FVX_data.csv", index_col=0, parse_dates=True)
     df.columns = ["Price"]  
-    
-    # Force index to be datetime (needed if parse_dates doesn't parse automatically)
     df.index = pd.to_datetime(df.index, errors="coerce")
-    
-    # Ensure Price column is numeric (added conversion without altering your comments)
+
+    # Ensuring price column is numeric
     df["Price"] = pd.to_numeric(df["Price"], errors="coerce")
     df.dropna(subset=["Price"], inplace=True)
 
+    # Compute log-returns
     df["log_ret"] = np.log(df["Price"] / df["Price"].shift(1))
     df.dropna(inplace=True)
 
-    # Estimating AR(2) using OLS estimation
-    phi0, phi1, phi2 = estimating_AR2_ols(df["log_ret"])
-    print(f"AR(2) OLS Estimates:")
-    print(f"phi0 = {phi0:.5f}, phi1 = {phi1:.5f}, phi2 = {phi2:.5f}")
+    # Splitting data: last 20 data points for testing, the rest for training
+    df_train = df.iloc[:-20].copy()
+    df_test = df.iloc[-20:].copy()
 
-    # Forecast next 5 steps
-    steps_ahead = 5
-    forecast_vals = forecasting_AR2(phi0, phi1, phi2, df["log_ret"], steps=steps_ahead)
-    print(f"\nForecasted log-returns for the next {steps_ahead} days:")
-    for i, val in enumerate(forecast_vals, start=1):
+    # Estimating AR(2) using OLS on the training set
+    phi0_ols, phi1_ols, phi2_ols = estimating_AR2_ols(df_train["log_ret"])
+    print(f"AR(2) OLS estimates (Training set):")
+    print(f"phi0 = {phi0_ols:.5f}, phi1 = {phi1_ols:.5f}, phi2 = {phi2_ols:.5f}")
+
+    # Estimating AR(2) using MLE on the training set
+    phi0_mle, phi1_mle, phi2_mle, sigma2_mle = estimating_AR2_mle(df_train["log_ret"])
+    print(f"\nAR(2) MLE estimates (Training set):")
+    print(f"phi0 = {phi0_mle:.5f}, phi1 = {phi1_mle:.5f}, phi2 = {phi2_mle:.5f}, sigma2 = {sigma2_mle:.5f}")
+
+    # Forecast the next 20 steps from the training set
+    steps_ahead = len(df_test)  # 20
+    forecast_vals_ols = forecasting_AR2(phi0_ols, phi1_ols, phi2_ols, df_train["log_ret"], steps=steps_ahead)
+    forecast_vals_mle = forecasting_AR2(phi0_mle, phi1_mle, phi2_mle, df_train["log_ret"], steps=steps_ahead)
+
+    print(f"\n(OLS) Forecasted log-returns for the next {steps_ahead} days:")
+    for i, val in enumerate(forecast_vals_ols, start=1):
         print(f"Day {i}: {val:.5f}")
 
-    # Plotting log returns & forecasts
-    plt.figure(figsize=(10, 4))
-    plt.plot(df["log_ret"], label="Historical Log-Returns")
+    print(f"\n(MLE) Forecasted log-returns for the next {steps_ahead} days:")
+    for i, val in enumerate(forecast_vals_mle, start=1):
+        print(f"Day {i}: {val:.5f}")
 
-    # Index for forecast
-    forecast_index = pd.date_range(start=df.index[-1] + pd.Timedelta(days=1),
-                                   periods=steps_ahead, freq='B')
-    plt.plot(forecast_index, forecast_vals, 'ro--', label="Forecasted Log-Returns")
-    plt.title("AR(2) Model - Log-Returns & 5-Step Ahead Forecast (OLS)")
+    # Plotting the training set, the test set, and the forecasts
+    plt.figure(figsize=(10, 5))
+    plt.plot(df_train["log_ret"], label="Training log-returns")
+    plt.plot(df_test["log_ret"], label="Test log-returns (actual)", color="gray")
+
+    # Date range for the forecast from the last train date
+    forecast_index = pd.date_range(
+        start=df_train.index[-1] + pd.Timedelta(days=1),
+        periods=steps_ahead,
+        freq='B'
+    )
+
+    # Plot OLS vs MLE forecasts
+    plt.plot(forecast_index, forecast_vals_ols, 'ro--', label="OLS forecast")
+    plt.plot(forecast_index, forecast_vals_mle, 'go--', label="MLE forecast")
+
+    plt.title("AR(2) Model - Train/Test split (20 points) - OLS vs MLE")
     plt.legend()
     plt.show()
 
