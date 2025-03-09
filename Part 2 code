@@ -8,3 +8,4 @@ from scipy.optimize import minimize
 df = yfin.download("^TNX", start="2010-01-01", end="2023-12-31")
 df['Log_Returns'] = np.log(df['Close'] / df['Close'].shift(1))
 df.dropna(inplace=True)
+print(df[['Close', 'Log_Returns']].head())
