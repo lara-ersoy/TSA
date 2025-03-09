@@ -1,0 +1,10 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import yfinance as yfin
+from scipy.optimize import minimize
+
+# PART 2 (a) - Load data and compute log returns
+df = yfin.download("^TNX", start="2010-01-01", end="2023-12-31")
+df['Log_Returns'] = np.log(df['Close'] / df['Close'].shift(1))
+df.dropna(inplace=True)
