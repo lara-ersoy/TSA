@@ -10,7 +10,7 @@ df['Log_Returns'] = np.log(df['Close'] / df['Close'].shift(1))
 df.dropna(inplace=True)
 print(df[['Close', 'Log_Returns']].head())
 
-# PART 2 (b) - Estimating AR(p) models for p = 1, 2, 3, 4, 5, now including BIC
+# PART 2 (b) - Estimating AR(p) models for p = 1, 2, 3, 4, 5, including BIC and AIC
 def estimating_ar_model(y, p):
     X = np.column_stack([y.shift(i) for i in range(1, p+1)])
     X = np.hstack([np.ones((X.shape[0], 1)), X])  # Adding the intercept
