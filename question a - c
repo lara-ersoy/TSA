@@ -1,0 +1,97 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import yfinance as yfin
+from scipy.optimize import minimize
+
+# PART 2 (a) - Loading in data and computing log returns
+df = yfin.download("^TNX", start="2010-01-01", end="2023-12-31")
+df['Log_Returns'] = np.log(df['Close'] / df['Close'].shift(1))
+df.dropna(inplace=True)
+print(df[['Close', 'Log_Returns']].head())
+
+# PART 2 (b) - Estimating AR(p) models for p = 1, 2, 3, 4, 5, including BIC and AIC
+def estimating_ar_model(y, p):
+    X = np.column_stack([y.shift(i) for i in range(1, p+1)])
+    X = np.hstack([np.ones((X.shape[0], 1)), X])  # Adding the intercept
+    y = y[p:]  # Dependent variable
+    X = X[p:, :]  # Independent variables
+
+    if X.shape[0] == 0 or X.shape[1] == 0:
+        return None, None, None, None  # Prevent errors from empty matrices
+
+    beta = np.linalg.pinv(X.T @ X) @ X.T @ y  # Use pseudo-inverse to avoid singular matrix issues
+    residuals = y - X @ beta
+    sigma2 = np.var(residuals)
+    log_llh = -0.5 * len(y) * np.log(2 * np.pi * sigma2) - (residuals @ residuals) / (2 * sigma2)
+
+    n = len(y)  # Sample size
+    k = len(beta)  # Number of parameters
+
+    aic = -2 * log_llh + 2 * k
+    bic = -2 * log_llh + k * np.log(n)  # Compute BIC
+
+    return log_llh, aic, bic, beta
+
+# Compute values for p = 1, 2, 3, 4, 5
+results = {"p": [], "Log Likelihood": [], "AIC": [], "BIC": []}
+
+for p in range(1, 6):
+    ll, aic, bic, _ = estimating_ar_model(df['Log_Returns'], p)
+    if ll is not None:
+        results["p"].append(p)
+        results["Log Likelihood"].append(ll)
+        results["AIC"].append(aic)
+        results["BIC"].append(bic)
+
+# Convert results to a DataFrame and display
+bic_df = pd.DataFrame(results)
+print(bic_df)
+
+# PART 2 (c) - Rolling window forecasting with the size of 750 observations
+def rolling_window_forecast(y, p, window=750):
+    forecasts = []
+    actuals = []
+    
+    for i in range(window, len(y)):
+        train = y[i-window:i]
+        _, _, _, beta = estimating_ar_model(train, p)
+        
+        if beta is None or beta.shape[0] != p + 1:
+            forecasts.append(np.nan)  # Append NaN if estimation fails
+            actuals.append(y.iloc[i])
+            continue  # Skip iteration if model estimation fails
+        
+        X_new = np.hstack([1, train[-p:].values[::-1]])  # Preparing new input
+        forecast = np.dot(X_new, beta)  # Use dot product to ensure proper dimensions
+        forecasts.append(forecast)
+        actuals.append(y.iloc[i])
+    
+    forecasts = np.array(forecasts)
+    actuals = np.array(actuals)
+    rmse = np.sqrt(np.nanmean((forecasts - actuals) ** 2))  # Use nanmean to handle missing values
+    
+    return forecasts, actuals, rmse
+
+# Generating rolling forecast for different AR orders
+rmse_results = {}
+
+for p in range(1, 6):
+    forecasts, actuals, rmse = rolling_window_forecast(df['Log_Returns'], p)
+    rmse_results[p] = rmse
+    
+    # Plot actual vs forecast
+    plt.figure(figsize=(10, 5))
+    plt.plot(actuals, label='Actual', color='lightblue')
+    plt.plot(forecasts, label=f'AR({p}) forecast', linestyle='dashed', color='fuchsia')
+    plt.xlabel("Time")
+    plt.ylabel("Log returns")
+    plt.title(f"Rolling window forecast for AR({p})")
+    plt.legend()
+    plt.savefig(f"rolling_forecast_ar{p}.png")
+    plt.close()
+
+# Printing RMSE results
+print("RMSE values for different AR models:")
+for p, rmse in rmse_results.items():
+    print(f"AR({p}): {rmse:.5f}")
