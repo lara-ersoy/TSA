@@ -15,7 +15,7 @@ df.dropna(inplace=True)
 
 log_returns = df["Log_Returns"].copy()
 
-# Last 20 observations as hold-out
+# Last 20 observations for testing
 r_train = log_returns.iloc[:-20]
 r_test = log_returns.iloc[-20:]
 
@@ -24,7 +24,6 @@ from statsmodels.tsa.arima.model import ARIMA
 fit = ARIMA(r_train.values, order=(2, 0, 0), trend="c").fit()
 
 params = fit.params  # [const, ar1, ar2, sigma2]
-# Make sure we map them correctly
 phi0 = float(params[0])
 phi1 = float(params[1])
 phi2 = float(params[2])
