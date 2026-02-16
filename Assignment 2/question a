@@ -1,0 +1,16 @@
+# PART 2
+
+import pandas as pd
+import yfinance as yfin
+
+
+# (a) 
+# Loading in data
+yfin.download("^FVX", ..., auto_adjust=False, progress=False)[["Adj Close"]]
+df.dropna(inplace=True)
+df.columns = ["Price"]
+
+# Saving cleaned data
+df.to_csv("FVX_data_cleaned.csv")
+print(df.head())
+print(df.tail())
