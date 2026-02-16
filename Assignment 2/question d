@@ -11,107 +11,75 @@ df['Log_Returns'] = np.log(df['Price'] / df['Price'].shift(1))
 df.dropna(inplace=True)
 
 # (b)
-# Estimating AR(p) models for p = 1, 2, 3, 4, 5
+# Estimating AR(2) model using a built-in arima function
 
-def estimating_ar_model(y, p):
-    X = np.column_stack([y.shift(i) for i in range(1, p+1)])
-    X = np.hstack([np.ones((X.shape[0], 1)), X])  # Adding the intercept
-    y = y[p:]  # Dependent variable
-    X = X[p:, :]  # Independent variables
-    
-    beta = np.linalg.inv(X.T @ X) @ X.T @ y  # OLS estimation formula
-    residuals = y - X @ beta
-    sigma2 = np.var(residuals)
-    log_llh = -0.5 * len(y) * np.log(2 * np.pi * sigma2) - (residuals @ residuals) / (2 * sigma2)
-    aic = -2 * log_llh + 2 * len(beta)
-    
-    return log_llh, aic, beta
+log_returns = df["Log_Returns"].copy()
 
-results = {"p": [], "Log Likelihood": [], "AIC": []}
-models = {}
+# Last 20 observations as hold-out
+r_train = log_returns.iloc[:-20]
+r_test = log_returns.iloc[-20:]
 
-for p in range(1, 6):
-    ll, aic, beta = estimating_ar_model(df['Log_Returns'], p)
-    results["p"].append(p)
-    results["Log Likelihood"].append(ll)
-    results["AIC"].append(aic)
-    models[p] = beta
+# AR(2) via statsmodels ARIMA
+from statsmodels.tsa.arima.model import ARIMA
+fit = ARIMA(r_train.values, order=(2, 0, 0), trend="c").fit()
 
-ar_results = pd.DataFrame(results)
-print("AR model selection:")
-print(ar_results)
+params = fit.params  # [const, ar1, ar2, sigma2]
+# Make sure we map them correctly
+phi0 = float(params[0])
+phi1 = float(params[1])
+phi2 = float(params[2])
 
-# (c) 
-#  Rolling the window forecastingwith the size of 750 observations
-def rolling_window_forecast(y, p, window=750):
-    forecasts = []
-    actuals = []
-    
-    for i in range(window, len(y)):
-        train = y[i-window:i]
-        _, _, beta = estimating_ar_model(train, p)
-        X_new = np.hstack([1, train[-p:].values[::-1]])  # Preparing new input
-        forecast = X_new @ beta
-        forecasts.append(forecast)
-        actuals.append(y.iloc[i])
-    
-    forecasts = np.array(forecasts)
-    actuals = np.array(actuals)
-    rmse = np.sqrt(np.mean((forecasts - actuals) ** 2))
-    
-    return forecasts, actuals, rmse
+# Saving parameters for later use
+pd.DataFrame({"phi0":[phi0], "phi1":[phi1], "phi2":[phi2]}).to_csv("ar2_params_from_d.csv", index=False)
 
-# Generating rolling forecast for different AR orders
-rmse_results = {}
+# (c)
+# Compare with OLS and MLE from part (c)
 
-for p in range(1, 6):
-    forecasts, actuals, rmse = rolling_window_forecast(df['Log_Returns'], p)
-    rmse_results[p] = rmse
-    
-    # Plot actual vs forecast
-    plt.figure(figsize=(10, 5))
-    plt.plot(actuals, label='Actual', color='lightblue')
-    plt.plot(forecasts, label=f'AR({p}) forecast', linestyle='dashed', color='fuchsia')
-    plt.xlabel("Time")
-    plt.ylabel("Log returns")
-    plt.title(f"Rolling window forecast for AR({p})")
-    plt.legend()
-    plt.savefig(f"rolling_forecast_ar{p}.png")
-    plt.close()  # This prevents display issues
+def preparing_AR2_data(log_returns):
+    r = log_returns.values
+    X, y = [], []
+    for t in range(2, len(r)):
+        X.append([1, r[t-1], r[t-2]])
+        y.append(r[t])
+    return np.array(X), np.array(y)
 
+def estimating_AR2_ols(log_returns):
+    X, y = preparing_AR2_data(log_returns)
+    beta = np.linalg.inv(X.T @ X) @ (X.T @ y)
+    return beta[0], beta[1], beta[2]
 
-# Printing RMSE results
-print("RMSE values for different AR models:")
-for p, rmse in rmse_results.items():
-    print(f"AR({p}): {rmse:.5f}")
+def negative_log_likelihood_AR2(params, r, sigma2):
+    phi0, phi1, phi2 = params
+    residuals = []
+    for t in range(2, len(r)):
+        residuals.append(r[t] - (phi0 + phi1*r[t-1] + phi2*r[t-2]))
+    residuals = np.array(residuals)
+    n = len(residuals)
+    return 0.5*n*np.log(2*np.pi*sigma2) + (residuals @ residuals) / (2*sigma2)
 
-# PART 2 (d) - Expanding window forecasting
-def expanding_window_forecast(y, p, start_size=750):
-    forecasts = []
-    actuals = []
-    
-    for i in range(start_size, len(y)):
-        train = y[:i]
-        _, _, beta = estimating_ar_model(train, p)
-        X_new = np.hstack([1, train[-p:].values[::-1]])  # Prepare new input
-        forecast = X_new @ beta
-        forecasts.append(forecast)
-        actuals.append(y.iloc[i])
-    
-    forecasts = np.array(forecasts)
-    actuals = np.array(actuals)
-    rmse = np.sqrt(np.mean((forecasts - actuals) ** 2))
-    
-    return forecasts, actuals, rmse
+phi0_ols, phi1_ols, phi2_ols = estimating_AR2_ols(r_train)
 
-# Generating expanding forecast for different AR orders
-expanding_rmse_results = {}
+r_arr = r_train.values
+sigma2_fixed = np.var(r_arr)
+init = np.array([phi0_ols, phi1_ols, phi2_ols])
+res = minimize(lambda p: negative_log_likelihood_AR2(p, r_arr, sigma2_fixed), init, method="Nelder-Mead")
+phi0_mle, phi1_mle, phi2_mle = res.x
 
-for p in range(1, 6):
-    forecasts, actuals, rmse = expanding_window_forecast(df['Log_Returns'], p)
-    expanding_rmse_results[p] = rmse
+print("AR(2) OLS:", phi0_ols, phi1_ols, phi2_ols)
+print("AR(2) MLE:", phi0_mle, phi1_mle, phi2_mle)
+print("AR(2) arima:", phi0, phi1, phi2)
 
-# Printing RMSE results for expanding window
-print("RMSE values for expanding window forecasting:")
-for p, rmse in expanding_rmse_results.items():
-    print(f"AR({p}): {rmse:.5f}")
+# (d)
+# Fitted values vs actual for the estimation sample
+
+fitted_vals = fit.fittedvalues
+residuals = r_train.values - fitted_vals
+
+pd.DataFrame({"actual": r_train.values, "fitted": fitted_vals, "residuals": residuals}).to_csv("ar2_fit_from_d.csv", index=False)
+
+plt.figure(figsize=(12, 6))
+plt.plot(r_train.values, label="Actual")
+plt.plot(fitted_vals, linestyle="--", label="Fitted")
+plt.title("Actual vs fitted log-returns (AR(2))")
+plt.legend()
+plt.show()

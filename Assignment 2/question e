@@ -1,145 +1,43 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.optimize import minimize
+from scipy import stats
 
-# (a)
-# Loading in data and compute log returns
-df = pd.read_csv("FVX_data_cleaned.csv", index_col=0, parse_dates=True)
-df.columns = ["Price"]
-df['Log_Returns'] = np.log(df['Price'] / df['Price'].shift(1))
-df.dropna(inplace=True)
+# (e)
+# Check for normality of the fitted residuals
 
-# (b) 
-# Estimating AR(p) models for p = 1, 2, 3, 4, 5
+df_fit = pd.read_csv("ar2_fit_from_d.csv")
+residuals = df_fit["residuals"].dropna().values
 
-def estimating_ar_model(y, p):
-    X = np.column_stack([y.shift(i) for i in range(1, p+1)])
-    X = np.hstack([np.ones((X.shape[0], 1)), X])  # Adding the intercept
-    y = y[p:]  # Dependent variable
-    X = X[p:, :]  # Independent variables
-    
-    beta = np.linalg.inv(X.T @ X) @ X.T @ y  # OLS estimation formula
-    residuals = y - X @ beta
-    sigma2 = np.var(residuals)
-    log_llh = -0.5 * len(y) * np.log(2 * np.pi * sigma2) - (residuals @ residuals) / (2 * sigma2)
-    aic = -2 * log_llh + 2 * len(beta)
-    
-    return log_llh, aic, beta
+# Histogram + density 
+plt.figure(figsize=(8, 5))
 
-results = {"p": [], "Log Likelihood": [], "AIC": []}
-models = {}
+# Histogram
+plt.hist(residuals, bins=50, density=True, color="#89CFF0", alpha=0.7)
 
-for p in range(1, 6):
-    ll, aic, beta = estimating_ar_model(df['Log_Returns'], p)
-    results["p"].append(p)
-    results["Log Likelihood"].append(ll)
-    results["AIC"].append(aic)
-    models[p] = beta
+# Density curve
+x = np.linspace(residuals.min(), residuals.max(), 400)
+kde = stats.gaussian_kde(residuals)
+plt.plot(x, kde(x), color="#FF00FF", linewidth=2)
 
-ar_results = pd.DataFrame(results)
-print("AR model selection:")
-print(ar_results)
-
-# (c) 
-# Rolling the window forecastingwith the size of 750 observations
-def rolling_window_forecast(y, p, window=750):
-    forecasts = []
-    actuals = []
-    
-    for i in range(window, len(y)):
-        train = y[i-window:i]
-        _, _, beta = estimating_ar_model(train, p)
-        X_new = np.hstack([1, train[-p:].values[::-1]])  # Preparing new input
-        forecast = X_new @ beta
-        forecasts.append(forecast)
-        actuals.append(y.iloc[i])
-    
-    forecasts = np.array(forecasts)
-    actuals = np.array(actuals)
-    rmse = np.sqrt(np.mean((forecasts - actuals) ** 2))
-    
-    return forecasts, actuals, rmse
-
-# Generating rolling forecast for different AR orders
-rmse_results = {}
-
-for p in range(1, 6):
-    forecasts, actuals, rmse = rolling_window_forecast(df['Log_Returns'], p)
-    rmse_results[p] = rmse
-    
-    # Plot actual vs forecast
-    plt.figure(figsize=(10, 5))
-    plt.plot(actuals, label='Actual', color='lightblue')
-    plt.plot(forecasts, label=f'AR({p}) forecast', linestyle='dashed', color='fuchsia')
-    plt.xlabel("Time")
-    plt.ylabel("Log returns")
-    plt.title(f"Rolling window forecast for AR({p})")
-    plt.legend()
-    plt.savefig(f"rolling_forecast_ar{p}.png")
-    plt.close()  # This prevents display issues
+plt.title("Residuals histogram + density")
+plt.xlabel("Residuals")
+plt.ylabel("Density")
+plt.tight_layout()
+plt.savefig("residuals_histogram.png", dpi=200)
+plt.show()
 
 
-# Printing RMSE results
-print("RMSE values for different AR models:")
-for p, rmse in rmse_results.items():
-    print(f"AR({p}): {rmse:.5f}")
+# QQ plot
+plt.figure(figsize=(8, 5))
 
-# PART 2 (d) - Expanding window forecasting
-def expanding_window_forecast(y, p, start_size=750):
-    forecasts = []
-    actuals = []
-    
-    for i in range(start_size, len(y)):
-        train = y[:i]
-        _, _, beta = estimating_ar_model(train, p)
-        X_new = np.hstack([1, train[-p:].values[::-1]])  # Prepare new input
-        forecast = X_new @ beta
-        forecasts.append(forecast)
-        actuals.append(y.iloc[i])
-    
-    forecasts = np.array(forecasts)
-    actuals = np.array(actuals)
-    rmse = np.sqrt(np.mean((forecasts - actuals) ** 2))
-    
-    return forecasts, actuals, rmse
+(osm, osr), (slope, intercept, r) = stats.probplot(residuals, dist="norm")
+plt.scatter(osm, osr, color="#800080") 
+plt.plot(osm, slope * osm + intercept, color="#FF69B4", linewidth=2)  
 
-# Generating expanding forecast for different AR orders
-expanding_rmse_results = {}
-
-for p in range(1, 6):
-    forecasts, actuals, rmse = expanding_window_forecast(df['Log_Returns'], p)
-    expanding_rmse_results[p] = rmse
-
-# Printing RMSE results for expanding window
-print("RMSE values for expanding window forecasting:")
-for p, rmse in expanding_rmse_results.items():
-    print(f"AR({p}): {rmse:.5f}")
-
-
-# (e & f)
-# Computing RMSE for each model using rolling and expanding window methods
-rmse_results = {"p": [], "Rolling RMSE": [], "Expanding RMSE": []}
-
-for p in range(1, 6):
-    rolling_rmse = rolling_window_forecast(df['Log_Returns'], p)[2]  # Extract only RMSE
-    expanding_rmse = expanding_window_forecast(df['Log_Returns'], p)[2]  # Extract only RMSE
-    rmse_results["p"].append(p)
-    rmse_results["Rolling RMSE"].append(rolling_rmse)
-    rmse_results["Expanding RMSE"].append(expanding_rmse)
-
-rmse_df = pd.DataFrame(rmse_results)
-print("RMSE comparison:")
-print(rmse_df)
-
-# Plot RMSE Comparison
-plt.figure(figsize=(10, 5))
-# Plot RMSE Comparison with updated colors
-plt.figure(figsize=(10, 5))
-plt.plot(rmse_df["p"], rmse_df["Rolling RMSE"], marker='o', label="Rolling RMSE", color='purple')
-plt.plot(rmse_df["p"], rmse_df["Expanding RMSE"], marker='s', label="Expanding RMSE", color='red')
-plt.xlabel("AR order (p)")
-plt.ylabel("RMSE")
-plt.title("RMSE comparison for AR Models")
-plt.legend()
+plt.title("Normal QQ plot of residuals")
+plt.xlabel("Theoretical Quantiles")
+plt.ylabel("Sample Quantiles")
+plt.tight_layout()
+plt.savefig("residuals_qqplot.png", dpi=200)
 plt.show()
