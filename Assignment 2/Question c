@@ -31,15 +31,13 @@ def estimating_AR2_ols(log_returns):
     phi0, phi1, phi2 = beta
     return phi0, phi1, phi2
 
-def negative_log_likelihood_AR2(params, r):
+def negative_log_likelihood_AR2(params, r, sigma2):
     """
     Negative log-likelihood for the AR(2) model with Gaussian errors
     """
-    phi0, phi1, phi2, sigma2 = params
+    phi0, phi1, phi2 = params
 
     # Sigma must be positive; if not, return a fault
-    if sigma2 <= 0:
-        return np.inf
 
     residuals = []
     for t in range(2, len(r)):
@@ -67,20 +65,20 @@ def estimating_AR2_mle(log_returns):
     phi0_guess = 0.0
     phi1_guess = 0.0
     phi2_guess = 0.0
-    sigma2_guess = np.var(r)  # naive guess
-    init_params = [phi0_guess, phi1_guess, phi2_guess, sigma2_guess]
+    sigma2 = np.var(r)
+    init_params = [phi0_guess, phi1_guess, phi2_guess]
 
     # Using optimization to minimize the negative log-likelihood
     result = minimize(
         negative_log_likelihood_AR2,
         init_params,
-        args=(r,),
+        args=(r, sigma2),
         method='BFGS',
         options={'disp': False}
     )
 
-    phi0_mle, phi1_mle, phi2_mle, sigma2_mle = result.x
-    return phi0_mle, phi1_mle, phi2_mle, sigma2_mle
+    phi0_mle, phi1_mle, phi2_mle = result.x
+    return phi0_mle, phi1_mle, phi2_mle, sigma2
 
 def forecasting_AR2(phi0, phi1, phi2, log_returns, steps=5):
     """
