@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import minimize  # Allowed for numerical optimization
+from scipy.optimize import minimize
 
 def preparing_AR2_data(log_returns):
     """
@@ -100,7 +100,7 @@ def forecasting_AR2(phi0, phi1, phi2, log_returns, steps=5):
 
 def main():
     # Read data
-    df = pd.read_csv("FVX_data.csv", index_col=0, parse_dates=True)
+    df = pd.read_csv("FVX_data_cleaned.csv", index_col=0, parse_dates=True)
     df.columns = ["Price"]  
     df.index = pd.to_datetime(df.index, errors="coerce")
 
