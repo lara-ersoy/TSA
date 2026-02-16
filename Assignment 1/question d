@@ -11,7 +11,7 @@ df['Log_Returns'] = np.log(df['Price'] / df['Price'].shift(1))
 df.dropna(inplace=True)
 
 # (b)
-# Estimating AR(2) model using a built-in arima function
+# Estimating AR(2) model using a built in arima function
 
 log_returns = df["Log_Returns"].copy()
 
